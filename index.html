@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ليلة مريم</title>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<style>
+body {
+  background: #171410;
+  color: #f5e6cc;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin: 0;
+  padding: 20px;
+}
+
+h1 {
+  font-size: 36px;
+  margin: 25px 0;
+}
+
+input, button {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  padding: 16px;
+  margin: 10px auto;
+  border-radius: 12px;
+  font-size: 18px;
+  border: none;
+}
+
+button {
+  background: #b99b69;
+  color: #171410;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#reader {
+  width: 100%;
+  max-width: 400px;
+  margin: 20px auto;
+}
+
+#resultImage {
+  width: 100%;
+  max-width: 450px;
+  border-radius: 12px;
+}
+
+#message {
+  font-size: 22px;
+  line-height: 1.6;
+}
+
+.hidden {
+  display: none;
+}
+</style>
+</head>
+
+<body>
+
+<h1>ليلة مريم</h1>
+
+<div id="login">
+  <p>الرجاء إدخال رمز المشرفة</p>
+  <input id="pin" type="password"
+    inputmode="numeric" placeholder="رمز الدخول">
+  <button onclick="login()">دخول</button>
+</div>
+
+<div id="scanner" class="hidden">
+  <p>وجهي الكاميرا نحو الباركود</p>
+  <div id="reader"></div>
+</div>
+
+<div id="result" class="hidden">
+  <img id="resultImage" class="hidden"
+    onerror="this.classList.add('hidden')">
+  <p id="message"></p>
+  <button onclick="startScanner()">مسح الدعوة التالية</button>
+</div>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbyBuacuG9oSIKUw4MBjS6ujcRCUj4ci85dXYUakGPR1DpKhuP23OAs6gKXKm3Ej--oH/exec";
+
+let pin = "";
+let scanner = null;
+let busy = false;
+
+function login() {
+  pin = document.getElementById("pin").value.trim();
+
+  if (!pin) {
+    alert("الرجاء إدخال رمز المشرفة");
+    return;
+  }
+
+  document.getElementById("login").classList.add("hidden");
+  startScanner();
+}
+
+async function startScanner() {
+  busy = false;
+
+  document.getElementById("result").classList.add("hidden");
+  document.getElementById("scanner").classList.remove("hidden");
+
+  try {
+    scanner = new Html5Qrcode("reader");
+
+    await scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      onScan
+    );
+
+  } catch (error) {
+    showResult("تعذر تشغيل الكاميرا. تأكدي من السماح باستخدامها.");
+  }
+}
+
+async function onScan(text) {
+  if (busy) return;
+  busy = true;
+
+  try {
+    await scanner.stop();
+    scanner.clear();
+
+    const url = new URL(text);
+    const expected = new URL(API);
+    const token = url.searchParams.get("token");
+
+    if (
+      url.origin !== expected.origin ||
+      url.pathname !== expected.pathname ||
+      !token
+    ) {
+      showResult("هذه الدعوة لا تخص حفلة الحنة");
+      return;
+    }
+
+    showResult("جاري التحقق من الدعوة...");
+
+    document.querySelector("#result button").disabled = true;
+
+    const response = await fetch(API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify({ token, pin })
+    });
+
+    const data = await response.json();
+
+    if (data.code === "PIN") {
+      alert("رمز المشرفة غير صحيح");
+      document.getElementById("result").classList.add("hidden");
+      document.getElementById("login").classList.remove("hidden");
+      return;
+    }
+
+    showResult(
+      data.message,
+      data.ok ? "success.png" :
+      data.message.includes("مسبقاً") ? "rejected.png" : ""
+    );
+
+  } catch (error) {
+    showResult("تعذر التحقق. راجعي حالة الدعوة في الشيت قبل إعادة المسح.");
+  } finally {
+    document.querySelector("#result button").disabled = false;
+  }
+}
+
+function showResult(message, image = "") {
+  document.getElementById("scanner").classList.add("hidden");
+  document.getElementById("result").classList.remove("hidden");
+  document.getElementById("message").textContent = message;
+
+  const img = document.getElementById("resultImage");
+  img.classList.add("hidden");
+
+  if (image) {
+    img.src = image;
+    img.classList.remove("hidden");
+  }
+}
+</script>
+
+</body>
+</html>
